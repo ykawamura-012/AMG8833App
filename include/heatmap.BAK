@@ -1,0 +1,12 @@
+#ifndef HEATMAP_H
+#define HEATMAP_H
+
+#include "amg8833.h"
+
+/* AMG8833の64画素の温度データをPNG画像で出力する */
+int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
+                             const char *filename,
+                             float min_temp,
+                             float max_temp);
+
+#endif
