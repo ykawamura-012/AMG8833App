@@ -4,6 +4,7 @@
 #include "stb_image_write.h"
 #include "heatmap.h"
 #include <stdlib.h>
+#include <stdio.h>
 /*------------------------Macro----------------------*/
 /* 取得データサイズ(8x8) */
 #define SRC_SIZE 8
@@ -76,6 +77,148 @@ static void temp_to_color(float norm,
 	*r = turbo_colormap[idx][0];
 	*g = turbo_colormap[idx][1];
 	*b = turbo_colormap[idx][2];
+}
+
+#define COLORBAR_WIDTH 8
+#define FONT_SCALE 1
+
+static void set_pixel(unsigned char *image,
+                      int x,
+                      int y,
+                      unsigned char r,
+                      unsigned char g,
+                      unsigned char b)
+{
+	int idx;
+
+	if (x < 0 || x >= DST_SIZE) return;
+	if (y < 0 || y >= DST_SIZE) return;
+
+	idx = (y * DST_SIZE + x) * 3;
+	image[idx + 0] = r;
+	image[idx + 1] = g;
+	image[idx + 2] = b;
+}
+
+static const unsigned char *get_font5x7(char c)
+{
+	static const unsigned char font_0[7] = {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E};
+	static const unsigned char font_1[7] = {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E};
+	static const unsigned char font_2[7] = {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F};
+	static const unsigned char font_3[7] = {0x1E,0x01,0x01,0x0E,0x01,0x01,0x1E};
+	static const unsigned char font_4[7] = {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02};
+	static const unsigned char font_5[7] = {0x1F,0x10,0x10,0x1E,0x01,0x01,0x1E};
+	static const unsigned char font_6[7] = {0x0E,0x10,0x10,0x1E,0x11,0x11,0x0E};
+	static const unsigned char font_7[7] = {0x1F,0x01,0x02,0x04,0x08,0x08,0x08};
+	static const unsigned char font_8[7] = {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E};
+	static const unsigned char font_9[7] = {0x0E,0x11,0x11,0x0F,0x01,0x01,0x0E};
+	static const unsigned char font_dot[7] = {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C};
+	static const unsigned char font_minus[7] = {0x00,0x00,0x00,0x1F,0x00,0x00,0x00};
+	static const unsigned char font_c[7] = {0x0E,0x11,0x10,0x10,0x10,0x11,0x0E};
+	static const unsigned char font_space[7] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+
+	switch (c) {
+	case '0': return font_0;
+	case '1': return font_1;
+	case '2': return font_2;
+	case '3': return font_3;
+	case '4': return font_4;
+	case '5': return font_5;
+	case '6': return font_6;
+	case '7': return font_7;
+	case '8': return font_8;
+	case '9': return font_9;
+	case '.': return font_dot;
+	case '-': return font_minus;
+	case 'C': return font_c;
+	case ' ': return font_space;
+	default:  return font_space;
+	}
+}
+
+static void draw_char(unsigned char *image,
+                      int x,
+                      int y,
+                      char c,
+                      unsigned char r,
+                      unsigned char g,
+                      unsigned char b)
+{
+	const unsigned char *font;
+	int row, col;
+	int sx, sy;
+
+	font = get_font5x7(c);
+
+	for (row = 0; row < 7; row++) {
+		for (col = 0; col < 5; col++) {
+			if (font[row] & (1 << (4 - col))) {
+				for (sy = 0; sy < FONT_SCALE; sy++) {
+					for (sx = 0; sx < FONT_SCALE; sx++) {
+						set_pixel(image,
+						          x + col * FONT_SCALE + sx,
+						          y + row * FONT_SCALE + sy,
+						          r, g, b);
+					}
+				}
+			}
+		}
+	}
+}
+
+static void draw_text(unsigned char *image,
+                      int x,
+                      int y,
+                      const char *text,
+                      unsigned char r,
+                      unsigned char g,
+                      unsigned char b)
+{
+	int i;
+	int cx;
+
+	cx = x;
+
+	for (i = 0; text[i] != '\0'; i++) {
+		draw_char(image, cx, y, text[i], r, g, b);
+		cx += 6 * FONT_SCALE;
+	}
+}
+
+static void draw_text_with_shadow(unsigned char *image,
+                                  int x,
+                                  int y,
+                                  const char *text)
+{
+	/* 黒の影を先に描く */
+	draw_text(image, x + 1, y + 1, text, 0, 0, 0);
+
+	/* 白文字を上から描く */
+	draw_text(image, x, y, text, 255, 255, 255);
+}
+
+static void draw_colorbar(unsigned char *image)
+{
+	int x, y, idx;
+	unsigned char r, g, b;
+	float norm;
+
+	for (y = 0; y < DST_SIZE; y++) {
+		norm = 1.0f - (float)y / (float)(DST_SIZE - 1);
+		temp_to_color(norm, &r, &g, &b);
+
+		for (x = DST_SIZE - COLORBAR_WIDTH; x < DST_SIZE; x++) {
+			idx = (y * DST_SIZE + x) * 3;
+			image[idx + 0] = r;
+			image[idx + 1] = g;
+			image[idx + 2] = b;
+		}
+	}
+
+	/* カラーバー左端に黒線を入れて見やすくする */
+	for (y = 0; y < DST_SIZE; y++) {
+		set_pixel(image, DST_SIZE - COLORBAR_WIDTH - 1, y, 0, 0, 0);
+	}
 }
 /******************************************************************************
 *
@@ -185,6 +328,17 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 			image[idx + 2] = b;
 		}
 	}
+
+	char max_text[16];
+	char min_text[16];
+
+	draw_colorbar(image);
+
+	snprintf(max_text, sizeof(max_text), "%.1fC", max_temp);
+	snprintf(min_text, sizeof(min_text), "%.1fC", min_temp);
+
+	draw_text_with_shadow(image, 86, 4, max_text);
+	draw_text_with_shadow(image, 86, DST_SIZE - 12, min_text);
 	
 	/* 配列をPNG画像で出力 */
 	result = stbi_write_png(filename,
