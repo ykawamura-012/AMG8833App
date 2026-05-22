@@ -11,6 +11,9 @@ typedef struct {
 /* AMG8833を初期化する */
 int amg8833_init(const char *dev_path);
 
+/* AMG8833の64画素分の温度データを読み出す */
+init amg8833_read(amg8833_pixels_t *pixels);
+
 /*
 * ヒートマップ画像を生成し、保存先パスを返す。
 * 返される文字列は内部バッファを指すため、次回呼び出しで上書きされる。

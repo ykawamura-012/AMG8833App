@@ -156,7 +156,7 @@ int amg8833_init(const char *dev_path) {
 *   0  - 成功
 *   -1 - 失敗
 */
-static int amg8833_read(amg8833_pixels_t *pixels) {
+int amg8833_read(amg8833_pixels_t *pixels) {
 	uint8_t reg = AMG8833_REG_PIXEL_BASE;
 	uint8_t buf[AMG8833_PIXEL_NUM * 2];
 	int16_t raw;
