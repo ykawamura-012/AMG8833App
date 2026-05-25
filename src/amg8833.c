@@ -93,13 +93,13 @@ static int make_heatmap_path(char *out, size_t out_size) {
 *   0  - 成功
 *   -1 - 失敗
 */
-int amg8833_init(const char *dev_path) {
+int amg8833_init(amg8833_handle_t *handle, const char *dev_path) {
 	uint8_t fpsc[2] = {AMG8833_REG_FPSC, AMG8833_FPSC_10_HZ};
 	uint8_t pclt[2] = {AMG8833_REG_PCLT, AMG8833_PCLT_NORMAL};
 	
-	if (g_fd >= 0) {
-		close(g_fd);
-		g_fd = -1;
+	if (handle->fd >= 0) {
+		close(handle->fd);
+		handle->fd = -1;
 	}
 	
 	if (dev_path == NULL) {
@@ -108,35 +108,35 @@ int amg8833_init(const char *dev_path) {
 	}
 	
 	/* I2Cデバイスファイルをオープン */
-	g_fd = open(dev_path, O_RDWR);
-	if (g_fd < 0) {
+	handle->fd = open(dev_path, O_RDWR);
+	if (handle->fd < 0) {
 		perror("open");
 		return -1;
 	}
 	
 	/* I2Cスレーブアドレスを設定 */
-	if (ioctl(g_fd, I2C_SLAVE, g_addr) < 0) {
+	if (ioctl(handle->fd, I2C_SLAVE, g_addr) < 0) {
 		perror("ioctl");
-		close(g_fd);
-		g_fd = -1;
+		close(handle->fd);
+		handle->fd = -1;
 		return -1;
 	}
 	
 	/* AMG8833をNORMALモードに設定 */
-	if (write(g_fd, pclt, 2) != 2) {
+	if (write(handle->fd, pclt, 2) != 2) {
 		perror("amg8833: write reg");
-		close(g_fd);
-		g_fd = -1;
+		close(handle->fd);
+		handle->fd = -1;
 		return -1;
 	}
 	/* モード変更のため50ms待つ */
 	usleep(AMG8833_POWERUP_DELAY_US);
 	
 	/* AMG8833のフレームレート設定（10Hz） */
-	if (write(g_fd, fpsc, 2) != 2) {
+	if (write(handle->fd, fpsc, 2) != 2) {
 		perror("amg8833: write reg");
-		close(g_fd);
-		g_fd = -1;
+		close(handle->fd);
+		handle->fd = -1;
 		return -1;
 	}
 	
@@ -156,24 +156,24 @@ int amg8833_init(const char *dev_path) {
 *   0  - 成功
 *   -1 - 失敗
 */
-int amg8833_read(amg8833_pixels_t *pixels) {
+int amg8833_read(amg8833_handle_t *handle, amg8833_pixels_t *pixels) {
 	uint8_t reg = AMG8833_REG_PIXEL_BASE;
 	uint8_t buf[AMG8833_PIXEL_NUM * 2];
 	int16_t raw;
 	int i;
 	
-	if (!pixels || g_fd < 0) {
+	if (!pixels || handle->fd < 0) {
 		return -1;
 	}
 	
 	/* 読み出し開始レジスタを指定 */
-	if (write(g_fd, &reg, 1) != 1) {
+	if (write(handle->fd, &reg, 1) != 1) {
 		perror("amg8833: write reg"); 
 		return -1;
 	}
 	
 	/* 温度データを一括読み出し */
-	if (read(g_fd, buf, sizeof(buf)) != sizeof(buf)) {
+	if (read(handle->fd, buf, sizeof(buf)) != sizeof(buf)) {
 		perror("amg8833: read reg");
 		return -1;
 	}
@@ -208,7 +208,7 @@ const char* amg8833_get_heatmap_path(void) {
 	}
 	
 	/* センサ読み取り */
-	if (amg8833_read(&pixels) != 0) {
+	if (amg8833_read(&g_handle, &pixels) != 0) {
 		fprintf(stderr, "amg8833_get_heatmap_path: read failed\n");
 		return NULL;
 	}
@@ -237,11 +237,11 @@ const char* amg8833_get_heatmap_path(void) {
 * amg8833_close
 *    I2Cデバイスをクローズする。
 */
-void amg8833_close(void) {
+void amg8833_close(amg8833_handle_t *handle) {
 	/* ファイルディスクリプタをクローズ */
-	if (g_fd >= 0) {
-		close(g_fd);
-		g_fd = -1;
+	if (handle->fd >= 0) {
+		close(handle->fd);
+		handle->fd = -1;
 	}
 	/* 内部状態の初期化 */
 	g_heatmap_path[0] = '\0';
