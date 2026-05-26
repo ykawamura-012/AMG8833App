@@ -87,6 +87,7 @@ static int make_heatmap_path(char *out, size_t out_size) {
 *    I2Cデバイスをオープンし、AMG8833をNORMALモードに設定する。
 *
 * 引数：
+*   handle   - AMG8833のハンドル
 *   dev_path - I2Cデバイスファイルパス（例："/dev/i2c-1"）
 *
 * 戻り値：
@@ -150,7 +151,8 @@ int amg8833_init(amg8833_handle_t *handle, const char *dev_path) {
 *    各画素データは12bit符号付き値であり、1LSB=0.25℃。
 *
 * 引数：
-*    pixels - 温度データ格納先
+*   handle - AMG8833のハンドル
+*   pixels - 温度データ格納先
 *
 * 戻り値：
 *   0  - 成功
@@ -187,6 +189,53 @@ int amg8833_read(amg8833_handle_t *handle, amg8833_pixels_t *pixels) {
 	}
 	
 	return 0;
+}
+/******************************************************************************
+ * 
+ * amg8833_get_data
+ *    AMG8833の64画素分の温度データを読み出し、集計データを計算して構造体に格納する。
+ * 
+ * 引数：
+ *   handle - AMG8833のハンドル
+ *   data   - 集計データ格納先
+ * 
+ * 戻り値：
+ *  0  - 成功
+ *  -1 - 失敗
+ */
+int amg8833_get_data(amg8833_handle_t *handle, amg8833_data_t *data)
+{
+    amg8833_pixels_t pixels;
+    float sum = 0.0f;
+
+    if (data == NULL) {
+        return -1;
+    }
+
+    if (amg8833_read(handle, &pixels) != 0) {
+        return -1;
+    }
+
+    data->min_temp = pixels.data[0];
+    data->max_temp = pixels.data[0];
+
+    for (int i = 0; i < 64; i++) {
+        data->pixels[i] = pixels.data[i];
+
+        if (pixels.data[i] < data->min_temp) {
+            data->min_temp = pixels.data[i];
+        }
+
+        if (pixels.data[i] > data->max_temp) {
+            data->max_temp = pixels.data[i];
+        }
+
+        sum += pixels.data[i];
+    }
+
+    data->avg_temp = sum / 64.0f;
+
+    return 0;
 }
 
 /******************************************************************************
@@ -236,6 +285,9 @@ const char* amg8833_get_heatmap_path(void) {
 *
 * amg8833_close
 *    I2Cデバイスをクローズする。
+*
+* 引数：
+*   handle - AMG8833のハンドル
 */
 void amg8833_close(amg8833_handle_t *handle) {
 	/* ファイルディスクリプタをクローズ */
