@@ -3,6 +3,12 @@
 
 #include "amg8833.h"
 
+/* AMG8833の64画素の温度データから自動レンジを計算する */
+int amg8833_calc_heatmap_range(const amg8833_pixels_t *pixels, 
+                               float *min_temp, 
+                               float *max_temp,
+                               float min_range_width);
+
 /* AMG8833の64画素の温度データをPNG画像で出力する */
 int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
                              const char *filename,

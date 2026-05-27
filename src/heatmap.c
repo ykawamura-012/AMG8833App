@@ -270,6 +270,63 @@ static float bilinear_sample(const amg8833_pixels_t *pixels, float src_x, float 
 }
 
 /******************************************************************************
+ * 
+ * amg8833_calc_heatmap_range
+ *    AMG8833の64画素の温度データから、ヒートマップの表示に適した温度範囲を自動計算する。
+ *	  温度差が小さい場合は、最低限の幅を持たせる。
+ *
+ * 引数：
+ *   pixels          - AMG8833の温度データ
+ *   min_temp         - 計算された最小温度の出力先
+ *   max_temp         - 計算された最大温度の出力先
+ *   min_range_width  - 最小温度範囲幅（例：5.0f）。これより温度差が小さい場合は、中心を保ったまま幅を広げる。
+ *
+ * 戻り値：
+ *   0  - 成功
+ *   -1 - 失敗（引数エラーなど）
+ */
+int amg8833_calc_heatmap_range(const amg8833_pixels_t *pixels,
+                               float *min_temp,
+                               float *max_temp,
+                               float min_range_width)
+{
+	int i;
+	float center;
+	float range;
+
+	if (pixels == NULL || min_temp == NULL || max_temp == NULL) {
+		return -1;
+	}
+
+	*min_temp = pixels->data[0];
+	*max_temp = pixels->data[0];
+
+	for (i = 1; i < AMG8833_PIXEL_NUM; i++) {
+		if (pixels->data[i] < *min_temp) {
+			*min_temp = pixels->data[i];
+		}
+
+		if (pixels->data[i] > *max_temp) {
+			*max_temp = pixels->data[i];
+		}
+	}
+
+	/*
+	 * 温度差が小さすぎる場合は、最低限の幅を持たせる。
+	 * 例：25.0～25.5℃しかない場合でも、5℃幅などに広げる。
+	 */
+	range = *max_temp - *min_temp;
+
+	if (min_range_width > 0.0f && range < min_range_width) {
+		center = (*max_temp + *min_temp) / 2.0f;
+		*min_temp = center - (min_range_width / 2.0f);
+		*max_temp = center + (min_range_width / 2.0f);
+	}
+
+	return 0;
+}
+
+/******************************************************************************
 *
 * amg8833_save_heatmap_png
 *    AMG8833のピクセルデータを拡大補間し、PNG画像として出力する。
