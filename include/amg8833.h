@@ -34,7 +34,7 @@ int amg8833_get_data(amg8833_handle_t *handle, amg8833_data_t *data);
  * ヒートマップ画像を生成し、保存先パスを返す。
  * 返される文字列は内部バッファを指すため、次回呼び出しで上書きされる。
  */
-const char* amg8833_get_heatmap_path(void);
+const char* amg8833_get_heatmap_path(amg8833_handle_t *handle);
 
 /* AMG8833との通信を終了する */
 void amg8833_close(amg8833_handle_t *handle);

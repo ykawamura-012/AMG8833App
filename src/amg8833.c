@@ -25,7 +25,6 @@
 #define AMG8833_HEATMAP_MIN_TEMP   18.0f
 #define AMG8833_HEATMAP_MAX_TEMP   40.0f
 /*----------------------Variable---------------------*/
-static int g_fd = -1;
 static const uint8_t g_addr = AMG8833_ADDR;
 static char g_heatmap_path[256] = {0};
 static unsigned int g_heatmap_seq = 0;
@@ -244,20 +243,23 @@ int amg8833_get_data(amg8833_handle_t *handle, amg8833_data_t *data)
 *    AMG8833から温度データを読み出し、ヒートマップPNGを新規保存して、
 *    その保存先パスを返す。
 *
+* 引数：
+*   handle - AMG8833のハンドル
+*
 * 戻り値：
 *   成功時 : 保存したPNGファイルパス
 *   失敗時 : NULL
 */
-const char* amg8833_get_heatmap_path(void) {
+const char* amg8833_get_heatmap_path(amg8833_handle_t *handle) {
 	amg8833_pixels_t pixels;
 	
-	if (g_fd < 0) {
+	if (handle == NULL || handle->fd < 0) {
 		fprintf(stderr, "amg8833_get_heatmap_path: device not initialized\n");
 		return NULL;
 	}
 	
 	/* センサ読み取り */
-	if (amg8833_read(&g_handle, &pixels) != 0) {
+	if (amg8833_read(handle, &pixels) != 0) {
 		fprintf(stderr, "amg8833_get_heatmap_path: read failed\n");
 		return NULL;
 	}
