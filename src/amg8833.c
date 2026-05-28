@@ -231,7 +231,7 @@ int amg8833_get_data(amg8833_handle_t *handle, amg8833_data_t *data)
     data->min_temp = pixels.data[0];
     data->max_temp = pixels.data[0];
 
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < AMG8833_PIXEL_NUM; i++) {
         data->pixels[i] = pixels.data[i];
 
         if (pixels.data[i] < data->min_temp) {
@@ -245,7 +245,7 @@ int amg8833_get_data(amg8833_handle_t *handle, amg8833_data_t *data)
         sum += pixels.data[i];
     }
 
-    data->avg_temp = sum / 64.0f;
+    data->avg_temp = sum / AMG8833_PIXEL_NUM;
 
     return 0;
 }
