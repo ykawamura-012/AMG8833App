@@ -294,7 +294,9 @@ int amg8833_calc_heatmap_range(const amg8833_pixels_t *pixels,
 	float center;
 	float range;
 
-	if (pixels == NULL || min_temp == NULL || max_temp == NULL) {
+	/* 引数チェック */
+	if (pixels == NULL || min_temp == NULL || max_temp == NULL || min_range_width < 0.0f) {
+		fprintf(stderr, "amg8833_calc_heatmap_range: invalid arguments\n");
 		return -1;
 	}
 
@@ -353,14 +355,24 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	float temp, norm;
 	float src_x, src_y;
 	
-	if (!pixels || !filename) return -1;
+	/* 引数チェック */
+	if (pixels == NULL || filename == NULL || min_temp == NULL || max_temp == NULL) {
+		fprintf(stderr, "amg8833_save_heatmap_png: invalid arguments\n");
+		return -1;
+	}
 	
 	/* ゼロ除算防止 */
-	if (max_temp <= min_temp) return -1;
+	if (max_temp <= min_temp) {
+		fprintf(stderr, "amg8833_save_heatmap_png: invalid temperature range\n");
+		return -1;
+	}
 	
 	/* 画像出力用の配列を生成 */
 	image = (unsigned char *)malloc(DST_SIZE * DST_SIZE * 3);
-	if (!image) return -1;
+	if (!image) {
+		fprintf(stderr, "amg8833_save_heatmap_png: failed to allocate image buffer\n");
+		return -1;
+	}
 	
 	for (y = 0; y < DST_SIZE; y++) {
 		for (x = 0; x < DST_SIZE; x++) {

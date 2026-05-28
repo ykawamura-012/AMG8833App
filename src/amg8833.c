@@ -97,14 +97,16 @@ int amg8833_init(amg8833_handle_t *handle, const char *dev_path) {
 	uint8_t fpsc[2] = {AMG8833_REG_FPSC, AMG8833_FPSC_10_HZ};
 	uint8_t pclt[2] = {AMG8833_REG_PCLT, AMG8833_PCLT_NORMAL};
 	
+	/* 引数チェック */
+	if (handle == NULL || dev_path == NULL) {
+		fprintf(stderr, "amg8833_init: invalid arguments\n");
+		return -1;
+	}
+
+	/* 既にオープンされている場合はクローズ */
 	if (handle->fd >= 0) {
 		close(handle->fd);
 		handle->fd = -1;
-	}
-	
-	if (dev_path == NULL) {
-		fprintf(stderr, "amg8833_init: dev_path is NULL\n");
-		return -1;
 	}
 	
 	/* I2Cデバイスファイルをオープン */
@@ -163,7 +165,15 @@ int amg8833_read(amg8833_handle_t *handle, amg8833_pixels_t *pixels) {
 	int16_t raw;
 	int i;
 	
-	if (!pixels || handle->fd < 0) {
+	/* 引数チェック */
+	if (handle == NULL || pixels == NULL) {
+		fprintf(stderr, "amg8833_read: invalid arguments\n");
+		return -1;
+	}
+
+	/* デバイスがオープンされているかチェック */
+	if (handle->fd < 0) {
+		fprintf(stderr, "amg8833_read: device not initialized\n");
 		return -1;
 	}
 	
@@ -207,11 +217,14 @@ int amg8833_get_data(amg8833_handle_t *handle, amg8833_data_t *data)
     amg8833_pixels_t pixels;
     float sum = 0.0f;
 
-    if (data == NULL) {
-        return -1;
-    }
+    /* 引数チェック */
+	if (handle == NULL || data == NULL) {
+		fprintf(stderr, "amg8833_get_data: invalid arguments\n");
+		return -1;
+	}
 
-    if (amg8833_read(handle, &pixels) != 0) {
+    /* 温度データを読み出し */
+	if (amg8833_read(handle, &pixels) != 0) {
         return -1;
     }
 
@@ -253,8 +266,9 @@ int amg8833_get_data(amg8833_handle_t *handle, amg8833_data_t *data)
 const char* amg8833_get_heatmap_path(amg8833_handle_t *handle) {
 	amg8833_pixels_t pixels;
 	
-	if (handle == NULL || handle->fd < 0) {
-		fprintf(stderr, "amg8833_get_heatmap_path: device not initialized\n");
+	/* 引数チェック */
+	if (handle == NULL) {
+		fprintf(stderr, "amg8833_get_heatmap_path: invalid arguments\n");
 		return NULL;
 	}
 	
@@ -292,6 +306,11 @@ const char* amg8833_get_heatmap_path(amg8833_handle_t *handle) {
 *   handle - AMG8833のハンドル
 */
 void amg8833_close(amg8833_handle_t *handle) {
+	/* 引数チェック */
+	if (handle == NULL) {
+		return;
+	}
+
 	/* ファイルディスクリプタをクローズ */
 	if (handle->fd >= 0) {
 		close(handle->fd);
