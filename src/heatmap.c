@@ -197,29 +197,42 @@ static void draw_text_with_shadow(unsigned char *image,
 	draw_text(image, x, y, text, 255, 255, 255);
 }
 
+#define COLORBAR_WIDTH 8
+#define COLORBAR_MARGIN 20
+
 static void draw_colorbar(unsigned char *image)
 {
-	int x, y, idx;
-	unsigned char r, g, b;
-	float norm;
+    int x, y, idx;
+    int bar_top;
+    int bar_bottom;
+    int bar_height;
+    unsigned char r, g, b;
+    float norm;
 
-	for (y = 0; y < DST_SIZE; y++) {
-		norm = 1.0f - (float)y / (float)(DST_SIZE - 1);
-		temp_to_color(norm, &r, &g, &b);
+    bar_top = COLORBAR_MARGIN;
+    bar_bottom = DST_SIZE - COLORBAR_MARGIN;
+    bar_height = bar_bottom - bar_top;
 
-		for (x = DST_SIZE - COLORBAR_WIDTH; x < DST_SIZE; x++) {
-			idx = (y * DST_SIZE + x) * 3;
-			image[idx + 0] = r;
-			image[idx + 1] = g;
-			image[idx + 2] = b;
-		}
-	}
+    for (y = bar_top; y < bar_bottom; y++) {
+        norm = 1.0f -
+               (float)(y - bar_top) / (float)(bar_height - 1);
 
-	/* カラーバー左端に黒線を入れて見やすくする */
-	for (y = 0; y < DST_SIZE; y++) {
-		set_pixel(image, DST_SIZE - COLORBAR_WIDTH - 1, y, 0, 0, 0);
-	}
+        temp_to_color(norm, &r, &g, &b);
+
+        for (x = DST_SIZE - COLORBAR_WIDTH; x < DST_SIZE; x++) {
+            idx = (y * DST_SIZE + x) * 3;
+            image[idx + 0] = r;
+            image[idx + 1] = g;
+            image[idx + 2] = b;
+        }
+    }
+
+    /* カラーバー左端の黒線 */
+    for (y = bar_top; y < bar_bottom; y++) {
+        set_pixel(image, DST_SIZE - COLORBAR_WIDTH - 1, y, 0, 0, 0);
+    }
 }
+
 /******************************************************************************
 *
 * bilinear_sample
@@ -356,7 +369,7 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	float src_x, src_y;
 	
 	/* 引数チェック */
-	if (pixels == NULL || filename == NULL || min_temp == NULL || max_temp == NULL) {
+	if (pixels == NULL || filename == NULL) {
 		fprintf(stderr, "amg8833_save_heatmap_png: invalid arguments\n");
 		return -1;
 	}
@@ -400,14 +413,14 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 
 	char max_text[16];
 	char min_text[16];
-
+	
 	draw_colorbar(image);
-
+	
 	snprintf(max_text, sizeof(max_text), "%.1fC", max_temp);
 	snprintf(min_text, sizeof(min_text), "%.1fC", min_temp);
-
-	draw_text_with_shadow(image, 86, 4, max_text);
-	draw_text_with_shadow(image, 86, DST_SIZE - 12, min_text);
+	
+	draw_text_with_shadow(image, 97, COLORBAR_MARGIN - 10, max_text);
+	draw_text_with_shadow(image, 97, DST_SIZE - COLORBAR_MARGIN + 3, min_text);
 	
 	/* 配列をPNG画像で出力 */
 	result = stbi_write_png(filename,
