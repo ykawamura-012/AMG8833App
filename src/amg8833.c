@@ -228,6 +228,7 @@ int amg8833_get_data(amg8833_handle_t *handle, amg8833_data_t *data)
         return -1;
     }
 
+	 /* 最小値、最大値、平均値を計算し、構造体に格納 */
     data->min_temp = pixels.data[0];
     data->max_temp = pixels.data[0];
 
