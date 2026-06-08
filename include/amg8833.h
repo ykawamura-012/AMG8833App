@@ -15,7 +15,7 @@ typedef struct {
 
 /* AMG8833の集計データ */
 typedef struct {
-    float pixels[AMG8833_PIXEL_NUM];
+    amg8833_pixels_t pixels;
     float min_temp;
     float max_temp;
     float avg_temp;

@@ -5,6 +5,7 @@
 #include "heatmap.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 /*------------------------Macro----------------------*/
 #define SRC_SIZE          8     /* 取得データサイズ(8x8) */
 #define DST_SIZE          128   /* 拡大データサイズ */
@@ -451,6 +452,10 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	float src_x, src_y;
 	char max_text[16];
 	char min_text[16];
+	int max_text_width;
+	int min_text_width;
+	int max_text_x;
+	int min_text_x;
 	
 	/* 引数チェック */
 	if (pixels == NULL || filename == NULL) {
@@ -501,8 +506,15 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	snprintf(max_text, sizeof(max_text), "%.1fC", max_temp);
 	snprintf(min_text, sizeof(min_text), "%.1fC", min_temp);
 	
-	draw_text_with_shadow(image, 97, COLORBAR_MARGIN - 10, max_text);
-	draw_text_with_shadow(image, 97, DST_SIZE - COLORBAR_MARGIN + 3, min_text);
+	/* 文字列の幅から、右端基準でx座標を決める */
+	max_text_width = (int)strlen(max_text) * FONT_WIDTH * FONT_SCALE;
+	min_text_width = (int)strlen(min_text) * FONT_WIDTH * FONT_SCALE;
+	
+	max_text_x = DST_SIZE - max_text_width - 2;
+	min_text_x = DST_SIZE - min_text_width - 2;
+	
+	draw_text_with_shadow(image, max_text_x, COLORBAR_MARGIN - 10, max_text);
+	draw_text_with_shadow(image, min_text_x, DST_SIZE - COLORBAR_MARGIN + 3, min_text);
 	
 	/* 配列をPNG画像で出力 */
 	result = stbi_write_png(filename,

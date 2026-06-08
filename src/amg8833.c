@@ -7,7 +7,6 @@
 #include <linux/i2c-dev.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <time.h>
 /*------------------------Macro----------------------*/
 #define AMG8833_ADDR               0x69
@@ -193,7 +192,9 @@ int amg8833_read(amg8833_handle_t *handle, amg8833_pixels_t *pixels) {
 	for (i = 0; i < AMG8833_PIXEL_NUM; i++) {
 		raw = (int16_t)(buf[i * 2 + 1] << 8) | buf[i * 2];
 		/* 12bit符号拡張 */
-		raw = (raw << 4) >> 4;
+		if (raw & 0x8000) {
+			raw |= 0xF000;
+		}
 		pixels->data[i] = raw * 0.25f;
 	}
 	
