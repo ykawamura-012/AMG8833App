@@ -192,7 +192,7 @@ int amg8833_read(amg8833_handle_t *handle, amg8833_pixels_t *pixels) {
 	for (i = 0; i < AMG8833_PIXEL_NUM; i++) {
 		raw = (int16_t)(buf[i * 2 + 1] << 8) | buf[i * 2];
 		/* 12bit符号拡張 */
-		if (raw & 0x8000) {
+		if (raw & 0x0800) {
 			raw |= 0xF000;
 		}
 		pixels->data[i] = raw * 0.25f;
@@ -234,7 +234,7 @@ int amg8833_get_data(amg8833_handle_t *handle, amg8833_data_t *data)
     data->max_temp = pixels.data[0];
 
     for (int i = 0; i < AMG8833_PIXEL_NUM; i++) {
-        data->pixels[i] = pixels.data[i];
+        data->pixels.data[i] = pixels.data[i];
 
         if (pixels.data[i] < data->min_temp) {
             data->min_temp = pixels.data[i];

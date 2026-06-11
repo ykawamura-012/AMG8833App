@@ -12,6 +12,7 @@
 #define COLORBAR_WIDTH    8     /* カラーバーの幅 */
 #define COLORBAR_MARGIN   20    /* カラーバーの上下マージン */
 #define FONT_SCALE        1     /* フォントの拡大倍率 */
+#define FONT_WIDTH        6     /* フォント1文字の幅 */
 /*----------------------Variable---------------------*/
 /* Turboカラーマップ 256段LUT */
 static const unsigned char turbo_colormap[256][3] = {
