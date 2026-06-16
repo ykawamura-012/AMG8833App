@@ -118,6 +118,29 @@ static void set_pixel(unsigned char *image,
 
 /******************************************************************************
  *
+ * draw_cross
+ *  画像バッファの指定座標に、中心が(cx, cy)の十字マークを描画する。
+ * 
+ * 引数：
+ *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *  cx    - 十字マークの中心X座標
+ *  cy    - 十字マークの中心Y座標
+ * 
+ * 戻り値：なし
+ */
+static void draw_cross(unsigned char *image, int cx, int cy)
+{
+	int i;
+
+	/* 十字マークは、中心から上下左右に4ピクセルずつ伸びる形にする */
+	for (i = -4; i <= 4; i++) {
+		set_pixel(image, cx + i, cy, 255, 255, 255);
+		set_pixel(image, cx, cy + i, 255, 255, 255);
+	}
+}
+
+/******************************************************************************
+ *
  * get_font5x7
  *  5x7ドットのビットマップフォントデータを取得する。
  * 
@@ -451,12 +474,19 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	int result;
 	float temp, norm;
 	float src_x, src_y;
+	
 	char max_text[16];
 	char min_text[16];
+	
 	int max_text_width;
 	int min_text_width;
 	int max_text_x;
 	int min_text_x;
+	
+	int hottest_x;
+	int hottest_y;
+	float hottest_temp;
+	int hottest_initialized;
 	
 	/* 引数チェック */
 	if (pixels == NULL || filename == NULL) {
@@ -470,13 +500,20 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 		return -1;
 	}
 	
-	/* 画像出力用の配列を生成 */
+	/* 最高温度の位置を記録する変数を初期化 */
+	hottest_x = 0;
+	hottest_y = 0;
+	hottest_temp = 0.0f;
+	hottest_initialized = 0;
+
+	/* 出力画像のバッファを確保（幅×高さ×3のサイズでRGB値を格納） */
 	image = (unsigned char *)malloc(DST_SIZE * DST_SIZE * 3);
 	if (!image) {
 		fprintf(stderr, "amg8833_save_heatmap_png: failed to allocate image buffer\n");
 		return -1;
 	}
 	
+	/* DST_SIZE x DST_SIZE の出力画像の各ピクセルについてループ */
 	for (y = 0; y < DST_SIZE; y++) {
 		for (x = 0; x < DST_SIZE; x++) {
 			
@@ -486,7 +523,14 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 			
 			/* 変換座標の温度をバイリニア補間で求める */
 			temp = bilinear_sample(pixels, src_x, src_y);
-			
+
+			if (!hottest_initialized || temp > hottest_temp) {
+				hottest_temp = temp;
+				hottest_x = x;
+				hottest_y = y;
+				hottest_initialized = 1;
+			}
+
 			/* 温度を正規化 */
 			norm = (temp - min_temp) / (max_temp - min_temp);
 			
@@ -500,6 +544,9 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 			image[idx + 2] = b;
 		}
 	}
+
+	/* 最高温度の位置に十字マークを描画 */
+	draw_cross(image, hottest_x, hottest_y);
 	
 	/* カラーバーと温度テキストを描画 */
 	draw_colorbar(image);
