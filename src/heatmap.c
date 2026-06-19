@@ -477,6 +477,10 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	
 	char max_text[16];
 	char min_text[16];
+	char hottest_text[16];
+
+	int text_x;
+	int text_y;
 	
 	int max_text_width;
 	int min_text_width;
@@ -547,6 +551,21 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 
 	/* 最高温度の位置に十字マークを描画 */
 	draw_cross(image, hottest_x, hottest_y);
+
+	/* 最高温度のテキストを描画 */
+	text_x = hottest_x + 8;
+	text_y = hottest_y - 8;
+
+	if (text_x > DST_SIZE - 40) {
+		text_x = hottest_x - 40;
+	}
+
+	if (text_y < 8) {
+		text_y = hottest_y + 8;
+	}
+
+	snprintf(hottest_text, sizeof(hottest_text), "%.1fC", hottest_temp);
+	draw_text_with_shadow(image, text_x, text_y, hottest_text);
 	
 	/* カラーバーと温度テキストを描画 */
 	draw_colorbar(image);
