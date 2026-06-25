@@ -14,6 +14,14 @@
 #define FONT_SCALE        1     /* フォントの拡大倍率 */
 #define FONT_WIDTH        6     /* フォント1文字の幅 */
 /*----------------------Variable---------------------*/
+/* 最高温度の位置を記録する構造体 */
+typedef struct {
+	int x;
+	int y;
+	float temp;
+	int initialized;
+} hottest_point_t;
+
 /* Turboカラーマップ 256段LUT */
 static const unsigned char turbo_colormap[256][3] = {
 	{48,18,59},{50,21,67},{51,24,74},{52,27,81},{53,30,88},{54,33,95},{55,36,102},{56,39,109},
@@ -447,6 +455,78 @@ int amg8833_calc_heatmap_range(const amg8833_pixels_t *pixels,
 
 	return 0;
 }
+/******************************************************************************
+ *
+ * update_hottest_point
+ *  現在の最高温度の位置と温度を更新する。
+ *  新しい温度が現在の最高温度より高い場合、またはまだ初期化されていない場合に更新する。
+ *
+ * 引数：
+ *  hottest - 最高温度の位置と温度を記録する構造体へのポインタ
+ *  x       - 新しい温度のX座標
+ *  y       - 新しい温度のY座標
+ *  temp    - 新しい温度値
+ *
+ * 戻り値：なし
+ */
+static void update_hottest_point(hottest_point_t *hottest,
+                                 int x,
+                                 int y,
+                                 float temp)
+{
+	/* まだ初期化されていない場合、または新しい温度が現在の最高温度より高い場合に更新する */
+	if (!hottest->initialized || temp > hottest->temp) {
+		hottest->x = x;
+		hottest->y = y;
+		hottest->temp = temp;
+		hottest->initialized = 1;
+	}
+}
+
+/******************************************************************************
+ *
+ * draw_hottest_marker
+ *  最高温度の位置に十字マークと温度テキストを描画する。
+ *  十字マークは白色で、テキストは白色の文字に黒い影をつけて描画する。
+ *
+ * 引数：
+ *  image   - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *  hottest - 最高温度の位置と温度を記録する構造体へのポインタ
+ *
+ * 戻り値：なし
+ */
+static void draw_hottest_marker(unsigned char *image,
+                                const hottest_point_t *hottest)
+{
+	char text[16];
+	int text_x;
+	int text_y;
+
+	/* 最高温度の位置が初期化されていない場合は何もしない */
+	if (!hottest->initialized) {
+		return;
+	}
+
+	/* 最高温度の位置に十字マークを描画 */
+	draw_cross(image, hottest->x, hottest->y);
+
+	/* 温度テキストの位置を決定（十字マークの右上に表示） */
+	text_x = hottest->x + 8;
+	text_y = hottest->y - 8;
+
+	/* 文字列が画像の右端や上端からはみ出さないように調整 */
+	if (text_x > DST_SIZE - 40) {
+		text_x = hottest->x - 40;
+	}
+
+	if (text_y < 8) {
+		text_y = hottest->y + 8;
+	}
+
+	/* 温度テキストを描画（例："36.5C"） */
+	snprintf(text, sizeof(text), "%.1fC", hottest->temp);
+	draw_text_with_shadow(image, text_x, text_y, text);
+}
 
 /******************************************************************************
 *
@@ -477,20 +557,11 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	
 	char max_text[16];
 	char min_text[16];
-	char hottest_text[16];
-
-	int text_x;
-	int text_y;
 	
 	int max_text_width;
 	int min_text_width;
 	int max_text_x;
 	int min_text_x;
-	
-	int hottest_x;
-	int hottest_y;
-	float hottest_temp;
-	int hottest_initialized;
 	
 	/* 引数チェック */
 	if (pixels == NULL || filename == NULL) {
@@ -505,10 +576,7 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	}
 	
 	/* 最高温度の位置を記録する変数を初期化 */
-	hottest_x = 0;
-	hottest_y = 0;
-	hottest_temp = 0.0f;
-	hottest_initialized = 0;
+	hottest_point_t hottest = {0};
 
 	/* 出力画像のバッファを確保（幅×高さ×3のサイズでRGB値を格納） */
 	image = (unsigned char *)malloc(DST_SIZE * DST_SIZE * 3);
@@ -528,12 +596,8 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 			/* 変換座標の温度をバイリニア補間で求める */
 			temp = bilinear_sample(pixels, src_x, src_y);
 
-			if (!hottest_initialized || temp > hottest_temp) {
-				hottest_temp = temp;
-				hottest_x = x;
-				hottest_y = y;
-				hottest_initialized = 1;
-			}
+			/* 最高温度の位置を更新 */
+			update_hottest_point(&hottest, x, y, temp);
 
 			/* 温度を正規化 */
 			norm = (temp - min_temp) / (max_temp - min_temp);
@@ -550,22 +614,7 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	}
 
 	/* 最高温度の位置に十字マークを描画 */
-	draw_cross(image, hottest_x, hottest_y);
-
-	/* 最高温度のテキストを描画 */
-	text_x = hottest_x + 8;
-	text_y = hottest_y - 8;
-
-	if (text_x > DST_SIZE - 40) {
-		text_x = hottest_x - 40;
-	}
-
-	if (text_y < 8) {
-		text_y = hottest_y + 8;
-	}
-
-	snprintf(hottest_text, sizeof(hottest_text), "%.1fC", hottest_temp);
-	draw_text_with_shadow(image, text_x, text_y, hottest_text);
+	draw_hottest_marker(image, &hottest);
 	
 	/* カラーバーと温度テキストを描画 */
 	draw_colorbar(image);
