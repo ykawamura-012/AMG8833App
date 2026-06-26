@@ -348,6 +348,63 @@ static void draw_colorbar(unsigned char *image)
 }
 
 /******************************************************************************
+ *
+ * calc_text_width
+ *  文字列の描画幅を計算する。
+ *
+ * 引数：
+ *  text - 幅を計算する文字列
+ *
+ * 戻り値：
+ *  文字列の描画幅
+ */
+static int calc_text_width(const char *text)
+{
+	return (int)strlen(text) * FONT_WIDTH * FONT_SCALE;
+}
+
+/******************************************************************************
+ *
+ * draw_colorbar_temperature_text
+ *  カラーバー付近に最高温度と最低温度のテキストを描画する。
+ *
+ * 引数：
+ *  image    - 画像バッファ
+ *  min_temp - 最低温度
+ *  max_temp - 最高温度
+ *
+ * 戻り値：なし
+ */
+static void draw_colorbar_temperature_text(unsigned char *image,
+                                           float min_temp,
+                                           float max_temp)
+{
+	char max_text[16];
+	char min_text[16];
+	int max_text_x;
+	int min_text_x;
+
+	/* 温度を文字列に変換（例："36.5C"） */
+	snprintf(max_text, sizeof(max_text), "%.1fC", max_temp);
+	snprintf(min_text, sizeof(min_text), "%.1fC", min_temp);
+
+	/* 文字列の幅から、右端基準でx座標を決める */
+	max_text_x = DST_SIZE - calc_text_width(max_text) - 2;
+	min_text_x = DST_SIZE - calc_text_width(min_text) - 2;
+
+	/* 最高温度と最低温度のテキストを描画（白文字に黒い影） */
+	draw_text_with_shadow(image,
+	                      max_text_x,
+	                      COLORBAR_MARGIN - 10,
+	                      max_text);
+
+	draw_text_with_shadow(image,
+	                      min_text_x,
+	                      DST_SIZE - COLORBAR_MARGIN + 3,
+	                      min_text);
+}
+
+/******************************************************************************
 *
 * bilinear_sample
 *    8x8 の温度データから、指定座標の温度値をバイリニア補間で求める。
@@ -555,14 +612,6 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	float temp, norm;
 	float src_x, src_y;
 	
-	char max_text[16];
-	char min_text[16];
-	
-	int max_text_width;
-	int min_text_width;
-	int max_text_x;
-	int min_text_x;
-	
 	/* 引数チェック */
 	if (pixels == NULL || filename == NULL) {
 		fprintf(stderr, "amg8833_save_heatmap_png: invalid arguments\n");
@@ -618,19 +667,7 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	
 	/* カラーバーと温度テキストを描画 */
 	draw_colorbar(image);
-	
-	snprintf(max_text, sizeof(max_text), "%.1fC", max_temp);
-	snprintf(min_text, sizeof(min_text), "%.1fC", min_temp);
-	
-	/* 文字列の幅から、右端基準でx座標を決める */
-	max_text_width = (int)strlen(max_text) * FONT_WIDTH * FONT_SCALE;
-	min_text_width = (int)strlen(min_text) * FONT_WIDTH * FONT_SCALE;
-	
-	max_text_x = DST_SIZE - max_text_width - 2;
-	min_text_x = DST_SIZE - min_text_width - 2;
-	
-	draw_text_with_shadow(image, max_text_x, COLORBAR_MARGIN - 10, max_text);
-	draw_text_with_shadow(image, min_text_x, DST_SIZE - COLORBAR_MARGIN + 3, min_text);
+	draw_colorbar_temperature_text(image, min_temp, max_temp);
 	
 	/* 配列をPNG画像で出力 */
 	result = stbi_write_png(filename,
