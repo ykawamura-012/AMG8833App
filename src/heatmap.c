@@ -586,6 +586,61 @@ static void draw_hottest_marker(unsigned char *image,
 }
 
 /******************************************************************************
+ *
+ * render_heatmap_body
+ *  ヒートマップの本体部分を描画する。
+ *  入力の8x8温度データをDST_SIZE x DST_SIZEに拡大し、カラーマップに変換して描画する。
+ *  また、最高温度の位置を記録する。
+ *
+ * 引数：
+ *  pixels   - AMG8833の温度データ
+ *  image    - 出力画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *  min_temp - カラーマップ下限温度
+ *  max_temp - カラーマップ上限温度
+ *  hottest  - 最高温度の位置と温度を記録する構造体へのポインタ
+ *
+ * 戻り値：なし
+ */
+static void render_heatmap_body(const amg8833_pixels_t *pixels,
+                                unsigned char *image,
+                                float min_temp,
+                                float max_temp,
+                                hottest_point_t *hottest)
+{
+	unsigned char r, g, b;
+	int x, y, idx;
+	float temp, norm;
+	float src_x, src_y;
+
+	for (y = 0; y < DST_SIZE; y++) {
+		for (x = 0; x < DST_SIZE; x++) {
+			
+			/* DST_SIZEの座標をSRC_SIZEの座標に変換（バイリニア補間用） */
+			src_x = (float)x * (float)(SRC_SIZE - 1) / (float)(DST_SIZE - 1);
+			src_y = (float)y * (float)(SRC_SIZE - 1) / (float)(DST_SIZE - 1);
+
+			/* バイリニア補間で温度値を取得 */
+			temp = bilinear_sample(pixels, src_x, src_y);
+
+			/* 最高温度の位置を更新 */
+			update_hottest_point(hottest, x, y, temp);
+
+			/* 温度値を0.0～1.0に正規化 */
+			norm = (temp - min_temp) / (max_temp - min_temp);
+
+			/* 正規化した温度値をRGB値に変換 */
+			temp_to_color(norm, &r, &g, &b);
+
+			/* 画像バッファにRGB値をセット */
+			idx = (y * DST_SIZE + x) * 3;
+			image[idx + 0] = r;
+			image[idx + 1] = g;
+			image[idx + 2] = b;
+		}
+	}
+}
+
+/******************************************************************************
 *
 * amg8833_save_heatmap_png
 *    AMG8833のピクセルデータを拡大補間し、PNG画像として出力する。
@@ -606,11 +661,7 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
                              float max_temp)
 {
 	unsigned char *image;
-	unsigned char r, g, b;
-	int x, y, idx;
 	int result;
-	float temp, norm;
-	float src_x, src_y;
 	
 	/* 引数チェック */
 	if (pixels == NULL || filename == NULL) {
@@ -634,33 +685,8 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 		return -1;
 	}
 	
-	/* DST_SIZE x DST_SIZE の出力画像の各ピクセルについてループ */
-	for (y = 0; y < DST_SIZE; y++) {
-		for (x = 0; x < DST_SIZE; x++) {
-			
-			/* 出力画像を入力8x8座標系へ変換 */
-			src_x = (float)x * (float)(SRC_SIZE - 1) / (float)(DST_SIZE - 1);
-			src_y = (float)y * (float)(SRC_SIZE - 1) / (float)(DST_SIZE - 1);
-			
-			/* 変換座標の温度をバイリニア補間で求める */
-			temp = bilinear_sample(pixels, src_x, src_y);
-
-			/* 最高温度の位置を更新 */
-			update_hottest_point(&hottest, x, y, temp);
-
-			/* 温度を正規化 */
-			norm = (temp - min_temp) / (max_temp - min_temp);
-			
-			/* 温度をカラーに変換 */
-			temp_to_color(norm, &r, &g, &b);
-			
-			/* 配列にRGB値を格納 */
-			idx = (y * DST_SIZE + x) * 3;
-			image[idx + 0] = r;
-			image[idx + 1] = g;
-			image[idx + 2] = b;
-		}
-	}
+	/* ヒートマップの本体部分を描画 */
+	render_heatmap_body(pixels, image, min_temp, max_temp, &hottest);
 
 	/* 最高温度の位置に十字マークを描画 */
 	draw_hottest_marker(image, &hottest);
