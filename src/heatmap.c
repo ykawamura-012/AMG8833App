@@ -174,6 +174,7 @@ static const unsigned char *get_font5x7(char c)
 	static const unsigned char font_dot[7] = {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C};
 	static const unsigned char font_minus[7] = {0x00,0x00,0x00,0x1F,0x00,0x00,0x00};
 	static const unsigned char font_c[7] = {0x0E,0x11,0x10,0x10,0x10,0x11,0x0E};
+	static const unsigned char font_degree[7] = {0x06,0x09,0x09,0x06,0x00,0x00,0x00};
 	static const unsigned char font_space[7] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00};
 
 	switch (c) {
@@ -190,6 +191,7 @@ static const unsigned char *get_font5x7(char c)
 	case '.': return font_dot;
 	case '-': return font_minus;
 	case 'C': return font_c;
+	case '~': return font_degree;
 	case ' ': return font_space;
 	default:  return font_space;
 	}
@@ -384,9 +386,9 @@ static void draw_colorbar_temperature_text(unsigned char *image,
 	int max_text_x;
 	int min_text_x;
 
-	/* 温度を文字列に変換（例："36.5C"） */
-	snprintf(max_text, sizeof(max_text), "%.1fC", max_temp);
-	snprintf(min_text, sizeof(min_text), "%.1fC", min_temp);
+	/* 温度を文字列に変換（例："36.5°C"） */
+	snprintf(max_text, sizeof(max_text), "%.1f~C", max_temp);
+	snprintf(min_text, sizeof(min_text), "%.1f~C", min_temp);
 
 	/* 文字列の幅から、右端基準でx座標を決める */
 	max_text_x = DST_SIZE - calc_text_width(max_text) - 2;
@@ -580,8 +582,8 @@ static void draw_hottest_marker(unsigned char *image,
 		text_y = hottest->y + 8;
 	}
 
-	/* 温度テキストを描画（例："36.5C"） */
-	snprintf(text, sizeof(text), "%.1fC", hottest->temp);
+	/* 温度テキストを描画（例："36.5°C"） */
+	snprintf(text, sizeof(text), "%.1f~C", hottest->temp);
 	draw_text_with_shadow(image, text_x, text_y, text);
 }
 
