@@ -7,12 +7,13 @@
 #include <stdio.h>
 #include <string.h>
 /*------------------------Macro----------------------*/
-#define SRC_SIZE          8     /* 取得データサイズ(8x8) */
-#define DST_SIZE          128   /* 拡大データサイズ */
-#define COLORBAR_WIDTH    8     /* カラーバーの幅 */
-#define COLORBAR_MARGIN   20    /* カラーバーの上下マージン */
-#define FONT_SCALE        1     /* フォントの拡大倍率 */
-#define FONT_WIDTH        6     /* フォント1文字の幅 */
+#define SRC_SIZE               8     /* 取得データサイズ(8x8) */
+#define DST_SIZE               128   /* 拡大データサイズ */
+#define COLORBAR_WIDTH         8     /* カラーバーの幅 */
+#define COLORBAR_MARGIN        20    /* カラーバーの上下マージン */
+#define COLORBAR_RIGHT_MARGIN  4     /* カラーバーの右端マージン */
+#define FONT_SCALE             1     /* フォントの拡大倍率 */
+#define FONT_WIDTH             6     /* フォント1文字の幅 */
 /*----------------------Variable---------------------*/
 /* 最高温度の位置を記録する構造体 */
 typedef struct {
@@ -318,35 +319,45 @@ static void draw_text_with_shadow(unsigned char *image,
  */
 static void draw_colorbar(unsigned char *image)
 {
-    int x, y, idx;
-    int bar_top;
-    int bar_bottom;
-    int bar_height;
-    unsigned char r, g, b;
-    float norm;
+	int x, y, idx;
+	int bar_top;
+	int bar_bottom;
+	int bar_height;
+	int bar_left;
+	int bar_right;
+	unsigned char r, g, b;
+	float norm;
 
-    bar_top = COLORBAR_MARGIN;
-    bar_bottom = DST_SIZE - COLORBAR_MARGIN;
-    bar_height = bar_bottom - bar_top;
+	bar_top = COLORBAR_MARGIN;
+	bar_bottom = DST_SIZE - COLORBAR_MARGIN;
+	bar_height = bar_bottom - bar_top;
 
-    for (y = bar_top; y < bar_bottom; y++) {
-        norm = 1.0f -
-               (float)(y - bar_top) / (float)(bar_height - 1);
+	bar_right = DST_SIZE - COLORBAR_RIGHT_MARGIN;
+	bar_left = bar_right - COLORBAR_WIDTH;
 
-        temp_to_color(norm, &r, &g, &b);
+	for (y = bar_top; y < bar_bottom; y++) {
+		norm = 1.0f -
+		       (float)(y - bar_top) / (float)(bar_height - 1);
 
-        for (x = DST_SIZE - COLORBAR_WIDTH; x < DST_SIZE; x++) {
-            idx = (y * DST_SIZE + x) * 3;
-            image[idx + 0] = r;
-            image[idx + 1] = g;
-            image[idx + 2] = b;
-        }
-    }
+		temp_to_color(norm, &r, &g, &b);
 
-    /* カラーバー左端の黒線 */
-    for (y = bar_top; y < bar_bottom; y++) {
-        set_pixel(image, DST_SIZE - COLORBAR_WIDTH - 1, y, 0, 0, 0);
-    }
+		for (x = bar_left; x < bar_right; x++) {
+			idx = (y * DST_SIZE + x) * 3;
+			image[idx + 0] = r;
+			image[idx + 1] = g;
+			image[idx + 2] = b;
+		}
+	}
+
+	/* カラーバーの枠 */
+	for (x = bar_left - 1; x <= bar_right; x++) {
+		set_pixel(image, x, bar_top - 1, 0, 0, 0);
+		set_pixel(image, x, bar_bottom, 0, 0, 0);
+	}
+	for (y = bar_top - 1; y <= bar_bottom; y++) {
+		set_pixel(image, bar_left - 1, y, 0, 0, 0);
+		set_pixel(image, bar_right, y, 0, 0, 0);
+	}
 }
 
 /******************************************************************************
@@ -391,8 +402,8 @@ static void draw_colorbar_temperature_text(unsigned char *image,
 	snprintf(min_text, sizeof(min_text), "%.1f~C", min_temp);
 
 	/* 文字列の幅から、右端基準でx座標を決める */
-	max_text_x = DST_SIZE - calc_text_width(max_text) - 2;
-	min_text_x = DST_SIZE - calc_text_width(min_text) - 2;
+	max_text_x = DST_SIZE - COLORBAR_RIGHT_MARGIN - calc_text_width(max_text);
+	min_text_x = DST_SIZE - COLORBAR_RIGHT_MARGIN - calc_text_width(min_text);
 
 	/* 最高温度と最低温度のテキストを描画（白文字に黒い影） */
 	draw_text_with_shadow(image,
