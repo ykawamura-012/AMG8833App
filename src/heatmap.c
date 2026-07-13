@@ -1,5 +1,8 @@
 /*-----------------------Define----------------------*/
+
+/* stb_image_writeの実装を有効化するためのマクロ定義 */
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+
 /*-----------------------Include---------------------*/
 #include "stb_image_write.h"
 #include "heatmap.h"
@@ -14,7 +17,8 @@
 #define COLORBAR_RIGHT_MARGIN  4     /* カラーバーの右端マージン */
 #define FONT_SCALE             1     /* フォントの拡大倍率 */
 #define FONT_WIDTH             6     /* フォント1文字の幅 */
-/*----------------------Variable---------------------*/
+/*------------------------Type-----------------------*/
+
 /* 最高温度の位置を記録する構造体 */
 typedef struct {
 	int x;
@@ -22,6 +26,8 @@ typedef struct {
 	float temp;
 	int initialized;
 } hottest_point_t;
+
+/*----------------------Constant---------------------*/
 
 /* Turboカラーマップ 256段LUT */
 static const unsigned char turbo_colormap[256][3] = {
@@ -58,413 +64,100 @@ static const unsigned char turbo_colormap[256][3] = {
 	{161,18,1},{158,16,1},{155,15,1},{152,14,1},{149,13,1},{146,11,1},{142,10,1},{139,9,2},{136,8,2},
 	{133,7,2},{129,6,2},{126,5,2},{122,4,3}
 };
-/******************************************************************************
-*
-* temp_to_color
-*    正規化した温度値をRGB値へ変換する。
-*
-* 引数：
-*   norm - 0.0～1.0 に正規化した温度値
-*   r    - 赤成分の出力先
-*   g    - 緑成分の出力先
-*   b    - 青成分の出力先
-*
-* 戻り値：なし
-*/
-static void temp_to_color(float norm,
-                          unsigned char *r,
-                          unsigned char *g,
-                          unsigned char *b)
-{
-	int idx;
-	
-	/* 範囲外のアクセスを防ぐ */
-	if (norm < 0) norm = 0.0f;
-	if (norm > 1) norm = 1.0f;
-	
-	/* 0～255の整数に変換 */
-	idx = (int)(norm * 255.0f + 0.5f);
-	
-	/* Turboカラーマッピング */
-	*r = turbo_colormap[idx][0];
-	*g = turbo_colormap[idx][1];
-	*b = turbo_colormap[idx][2];
-}
 
-/******************************************************************************
- * 
- * set_pixel
- *   画像バッファの指定座標にRGB値をセットする。
- *  座標が画像範囲外の場合は何もしない。
- * 
- * 引数：
- *   image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
- *   x     - X座標
- *   y     - Y座標
- *   r     - 赤成分
- *   g     - 緑成分
- * 	 b     - 青成分
- * 
- * 戻り値：なし
- */
-static void set_pixel(unsigned char *image,
-                      int x,
-                      int y,
-                      unsigned char r,
-                      unsigned char g,
-                      unsigned char b)
-{
-	int idx;
+/* 5x7ドットのビットマップフォントデータ */
+static const unsigned char font5x7_digits[][7] = {
+	{0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, /* 0 */
+	{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}, /* 1 */
+	{0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, /* 2 */
+	{0x1E,0x01,0x01,0x0E,0x01,0x01,0x1E}, /* 3 */
+	{0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}, /* 4 */
+	{0x1F,0x10,0x10,0x1E,0x01,0x01,0x1E}, /* 5 */
+	{0x0E,0x10,0x10,0x1E,0x11,0x11,0x0E}, /* 6 */
+	{0x1F,0x01,0x02,0x04,0x08,0x08,0x08}, /* 7 */
+	{0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}, /* 8 */
+	{0x0E,0x11,0x11,0x0F,0x01,0x01,0x0E}  /* 9 */
+};
 
-	if (x < 0 || x >= DST_SIZE) return;
-	if (y < 0 || y >= DST_SIZE) return;
+static const unsigned char font5x7_dot[7]    = {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C};
+static const unsigned char font5x7_minus[7]  = {0x00,0x00,0x00,0x1F,0x00,0x00,0x00};
+static const unsigned char font5x7_c[7]      = {0x0E,0x11,0x10,0x10,0x10,0x11,0x0E};
+static const unsigned char font5x7_degree[7] = {0x06,0x09,0x09,0x06,0x00,0x00,0x00};
+static const unsigned char font5x7_space[7]  = {0x00,0x00,0x00,0x00,0x00,0x00,0x00};
 
-	idx = (y * DST_SIZE + x) * 3;
-	image[idx + 0] = r;
-	image[idx + 1] = g;
-	image[idx + 2] = b;
-}
+/*------------------Static Prototypes----------------*/
 
-/******************************************************************************
- *
- * draw_cross
- *  画像バッファの指定座標に、中心が(cx, cy)の十字マークを描画する。
- * 
- * 引数：
- *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
- *  cx    - 十字マークの中心X座標
- *  cy    - 十字マークの中心Y座標
- * 
- * 戻り値：なし
- */
-static void draw_cross(unsigned char *image, int cx, int cy)
-{
-	int i;
+/* Heatmap rendering */
+static void render_heatmap_body(const amg8833_pixels_t *pixels,
+                                unsigned char *image,
+                                float min_temp,
+                                float max_temp,
+                                hottest_point_t *hottest);
 
-	/* 十字マークは、中心から上下左右に4ピクセルずつ伸びる形にする */
-	for (i = -4; i <= 4; i++) {
-		set_pixel(image, cx + i, cy, 255, 255, 255);
-		set_pixel(image, cx, cy + i, 255, 255, 255);
-	}
-}
+static void update_hottest_point(hottest_point_t *hottest,
+                                 int x,
+                                 int y,
+                                 float temp);
 
-/******************************************************************************
- *
- * get_font5x7
- *  5x7ドットのビットマップフォントデータを取得する。
- * 
- * 引数：
- *  c - 文字（'0'～'9', '.', '-', 'C', ' '）
- * 
- * 戻り値：
- *  文字に対応する7バイトのビットマップデータへのポインタ。
- *  対応する文字がない場合はスペースのビットマップを返す。
- */
-static const unsigned char *get_font5x7(char c)
-{
-	static const unsigned char font_0[7] = {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E};
-	static const unsigned char font_1[7] = {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E};
-	static const unsigned char font_2[7] = {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F};
-	static const unsigned char font_3[7] = {0x1E,0x01,0x01,0x0E,0x01,0x01,0x1E};
-	static const unsigned char font_4[7] = {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02};
-	static const unsigned char font_5[7] = {0x1F,0x10,0x10,0x1E,0x01,0x01,0x1E};
-	static const unsigned char font_6[7] = {0x0E,0x10,0x10,0x1E,0x11,0x11,0x0E};
-	static const unsigned char font_7[7] = {0x1F,0x01,0x02,0x04,0x08,0x08,0x08};
-	static const unsigned char font_8[7] = {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E};
-	static const unsigned char font_9[7] = {0x0E,0x11,0x11,0x0F,0x01,0x01,0x0E};
-	static const unsigned char font_dot[7] = {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C};
-	static const unsigned char font_minus[7] = {0x00,0x00,0x00,0x1F,0x00,0x00,0x00};
-	static const unsigned char font_c[7] = {0x0E,0x11,0x10,0x10,0x10,0x11,0x0E};
-	static const unsigned char font_degree[7] = {0x06,0x09,0x09,0x06,0x00,0x00,0x00};
-	static const unsigned char font_space[7] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+static float bilinear_sample(const amg8833_pixels_t *pixels,
+                             float src_x,
+                             float src_y);
 
-	switch (c) {
-	case '0': return font_0;
-	case '1': return font_1;
-	case '2': return font_2;
-	case '3': return font_3;
-	case '4': return font_4;
-	case '5': return font_5;
-	case '6': return font_6;
-	case '7': return font_7;
-	case '8': return font_8;
-	case '9': return font_9;
-	case '.': return font_dot;
-	case '-': return font_minus;
-	case 'C': return font_c;
-	case '~': return font_degree;
-	case ' ': return font_space;
-	default:  return font_space;
-	}
-}
+/* Hottest point marker */
+static void draw_hottest_marker(unsigned char *image,
+                                const hottest_point_t *hottest);
 
-/******************************************************************************
- *
- * draw_char
- *  画像バッファの指定座標に、指定した文字を描画する。
- *  フォントは5x7ドットで、必要に応じて拡大して描画する。
- * 
- * 引数：
- *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
- *  x     - 描画開始X座標
- *  y     - 描画開始Y座標
- *  c     - 描画する文字
- *  r     - 赤成分
- *  g     - 緑成分
- *  b     - 青成分
- * 
- * 戻り値：なし
- */
-static void draw_char(unsigned char *image,
-                      int x,
-                      int y,
-                      char c,
-                      unsigned char r,
-                      unsigned char g,
-                      unsigned char b)
-{
-	const unsigned char *font;
-	int row, col;
-	int sx, sy;
+static void draw_cross(unsigned char *image,
+                       int cx,
+                       int cy);
 
-	font = get_font5x7(c);
+/* Color bar */
+static void draw_colorbar(unsigned char *image);
 
-	for (row = 0; row < 7; row++) {
-		for (col = 0; col < 5; col++) {
-			if (font[row] & (1 << (4 - col))) {
-				for (sy = 0; sy < FONT_SCALE; sy++) {
-					for (sx = 0; sx < FONT_SCALE; sx++) {
-						set_pixel(image,
-						          x + col * FONT_SCALE + sx,
-						          y + row * FONT_SCALE + sy,
-						          r, g, b);
-					}
-				}
-			}
-		}
-	}
-}
+static void draw_colorbar_temperature_text(unsigned char *image,
+                                           float min_temp,
+                                           float max_temp);
 
-/******************************************************************************
- *
- * draw_text
- *  画像バッファの指定座標に、指定した文字列を描画する。
- *  フォントは5x7ドットで、必要に応じて拡大して描画する。
- * 
- * 引数：
- *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
- *  x     - 描画開始X座標
- *  y     - 描画開始Y座標
- *  text  - 描画する文字列（NULL終端）
- *  r     - 赤成分
- *  g     - 緑成分
- *  b     - 青成分
- * 
- * 戻り値：なし
- */
+/* Text rendering */
+static void draw_text_with_shadow(unsigned char *image,
+                                  int x,
+                                  int y,
+                                  const char *text);
+
 static void draw_text(unsigned char *image,
                       int x,
                       int y,
                       const char *text,
                       unsigned char r,
                       unsigned char g,
-                      unsigned char b)
-{
-	int i;
-	int cx;
+                      unsigned char b);
 
-	cx = x;
+static void draw_char(unsigned char *image,
+                      int x,
+                      int y,
+                      char c,
+                      unsigned char r,
+                      unsigned char g,
+                      unsigned char b);
 
-	for (i = 0; text[i] != '\0'; i++) {
-		draw_char(image, cx, y, text[i], r, g, b);
-		cx += 6 * FONT_SCALE;
-	}
-}
+static const unsigned char *get_font5x7(char c);
 
-/******************************************************************************
- *
- * draw_text_with_shadow
- *  文字列を白色で描画し、その下に黒い影を描くことで、明るい背景でも文字が見やすくなるようにする。
- * 
- * 引数：
- *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
- *  x     - 描画開始X座標
- *  y     - 描画開始Y座標
- *  text  - 描画する文字列（NULL終端）
- * 
- * 戻り値：なし
- */
-static void draw_text_with_shadow(unsigned char *image,
-                                  int x,
-                                  int y,
-                                  const char *text)
-{
-	/* 黒の影を先に描く */
-	draw_text(image, x + 1, y + 1, text, 0, 0, 0);
+static int calc_text_width(const char *text);
 
-	/* 白文字を上から描く */
-	draw_text(image, x, y, text, 255, 255, 255);
-}
+/* Common low-level functions */
+static void set_pixel(unsigned char *image,
+                      int x,
+                      int y,
+                      unsigned char r,
+                      unsigned char g,
+                      unsigned char b);
 
-/******************************************************************************
- *
- * draw_colorbar
- *  画像の右端に、温度のカラーバーを描画する。
- *  カラーバーは、上が高温（赤）、下が低温（青）になるようにする。
- * 
- * 引数：
- *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
- * 
- * 戻り値：なし
- */
-static void draw_colorbar(unsigned char *image)
-{
-	int x, y, idx;
-	int bar_top;
-	int bar_bottom;
-	int bar_height;
-	int bar_left;
-	int bar_right;
-	unsigned char r, g, b;
-	float norm;
+static void temp_to_color(float norm,
+                          unsigned char *r,
+                          unsigned char *g,
+                          unsigned char *b);
 
-	bar_top = COLORBAR_MARGIN;
-	bar_bottom = DST_SIZE - COLORBAR_MARGIN;
-	bar_height = bar_bottom - bar_top;
-
-	bar_right = DST_SIZE - COLORBAR_RIGHT_MARGIN;
-	bar_left = bar_right - COLORBAR_WIDTH;
-
-	for (y = bar_top; y < bar_bottom; y++) {
-		norm = 1.0f -
-		       (float)(y - bar_top) / (float)(bar_height - 1);
-
-		temp_to_color(norm, &r, &g, &b);
-
-		for (x = bar_left; x < bar_right; x++) {
-			idx = (y * DST_SIZE + x) * 3;
-			image[idx + 0] = r;
-			image[idx + 1] = g;
-			image[idx + 2] = b;
-		}
-	}
-
-	/* カラーバーの枠 */
-	for (x = bar_left - 1; x <= bar_right; x++) {
-		set_pixel(image, x, bar_top - 1, 0, 0, 0);
-		set_pixel(image, x, bar_bottom, 0, 0, 0);
-	}
-	for (y = bar_top - 1; y <= bar_bottom; y++) {
-		set_pixel(image, bar_left - 1, y, 0, 0, 0);
-		set_pixel(image, bar_right, y, 0, 0, 0);
-	}
-}
-
-/******************************************************************************
- *
- * calc_text_width
- *  文字列の描画幅を計算する。
- *
- * 引数：
- *  text - 幅を計算する文字列
- *
- * 戻り値：
- *  文字列の描画幅
- */
-static int calc_text_width(const char *text)
-{
-	return (int)strlen(text) * FONT_WIDTH * FONT_SCALE;
-}
-
-/******************************************************************************
- *
- * draw_colorbar_temperature_text
- *  カラーバー付近に最高温度と最低温度のテキストを描画する。
- *
- * 引数：
- *  image    - 画像バッファ
- *  min_temp - 最低温度
- *  max_temp - 最高温度
- *
- * 戻り値：なし
- */
-static void draw_colorbar_temperature_text(unsigned char *image,
-                                           float min_temp,
-                                           float max_temp)
-{
-	char max_text[16];
-	char min_text[16];
-	int max_text_x;
-	int min_text_x;
-
-	/* 温度を文字列に変換（例："36.5°C"） */
-	snprintf(max_text, sizeof(max_text), "%.1f~C", max_temp);
-	snprintf(min_text, sizeof(min_text), "%.1f~C", min_temp);
-
-	/* 文字列の幅から、右端基準でx座標を決める */
-	max_text_x = DST_SIZE - COLORBAR_RIGHT_MARGIN - calc_text_width(max_text);
-	min_text_x = DST_SIZE - COLORBAR_RIGHT_MARGIN - calc_text_width(min_text);
-
-	/* 最高温度と最低温度のテキストを描画（白文字に黒い影） */
-	draw_text_with_shadow(image,
-	                      max_text_x,
-	                      COLORBAR_MARGIN - 10,
-	                      max_text);
-
-	draw_text_with_shadow(image,
-	                      min_text_x,
-	                      DST_SIZE - COLORBAR_MARGIN + 3,
-	                      min_text);
-}
-
-/******************************************************************************
-*
-* bilinear_sample
-*    8x8 の温度データから、指定座標の温度値をバイリニア補間で求める。
-*
-* 引数：
-*   pixels - AMG8833の温度データ
-*   src_x  - 元画像上のX座標
-*   src_y  - 元画像上のY座標
-*
-* 戻り値：
-*   補間後の温度値
-*/
-static float bilinear_sample(const amg8833_pixels_t *pixels, float src_x, float src_y)
-{
-	int x0, y0, x1, y1;
-	float dx, dy;
-	float v00, v01, v10, v11;
-	float v0, v1;
-	
-	/* 座標の範囲外アクセスを防ぐ */
-	if (src_x < 0.0f) src_x = 0.0f;
-	if (src_x > (float)(SRC_SIZE - 1)) src_x = (float)(SRC_SIZE - 1);
-	if (src_y < 0.0f) src_y = 0.0f;
-	if (src_y > (float)(SRC_SIZE - 1)) src_y = (float)(SRC_SIZE - 1);
-	
-	/* 周囲4点の座標を取得 */
-	x0 = (int)src_x;
-	y0 = (int)src_y;
-	x1 = (x0 < SRC_SIZE - 1) ? (x0 + 1) : x0;
-	y1 = (y0 < SRC_SIZE - 1) ? (y0 + 1) : y0;
-	
-	/* 距離を計算 */
-	dx = src_x - (float)x0;
-	dy = src_y - (float)y0;
-	
-	/* 4点の温度値を取得 */
-	v00 = pixels->data[y0 * SRC_SIZE + x0];
-	v01 = pixels->data[y0 * SRC_SIZE + x1];
-	v10 = pixels->data[y1 * SRC_SIZE + x0];
-	v11 = pixels->data[y1 * SRC_SIZE + x1];
-	
-	/* 重み付け */
-	v0 = v00 * (1.0f - dx) + v01 * dx;
-	v1 = v10 * (1.0f - dx) + v11 * dx;
-	
-	return v0 * (1.0f - dy) + v1 * dy;
-}
+/*---------------Public (API) functions--------------*/
 
 /******************************************************************************
  * 
@@ -524,133 +217,6 @@ int amg8833_calc_heatmap_range(const amg8833_pixels_t *pixels,
 	}
 
 	return 0;
-}
-/******************************************************************************
- *
- * update_hottest_point
- *  現在の最高温度の位置と温度を更新する。
- *  新しい温度が現在の最高温度より高い場合、またはまだ初期化されていない場合に更新する。
- *
- * 引数：
- *  hottest - 最高温度の位置と温度を記録する構造体へのポインタ
- *  x       - 新しい温度のX座標
- *  y       - 新しい温度のY座標
- *  temp    - 新しい温度値
- *
- * 戻り値：なし
- */
-static void update_hottest_point(hottest_point_t *hottest,
-                                 int x,
-                                 int y,
-                                 float temp)
-{
-	/* まだ初期化されていない場合、または新しい温度が現在の最高温度より高い場合に更新する */
-	if (!hottest->initialized || temp > hottest->temp) {
-		hottest->x = x;
-		hottest->y = y;
-		hottest->temp = temp;
-		hottest->initialized = 1;
-	}
-}
-
-/******************************************************************************
- *
- * draw_hottest_marker
- *  最高温度の位置に十字マークと温度テキストを描画する。
- *  十字マークは白色で、テキストは白色の文字に黒い影をつけて描画する。
- *
- * 引数：
- *  image   - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
- *  hottest - 最高温度の位置と温度を記録する構造体へのポインタ
- *
- * 戻り値：なし
- */
-static void draw_hottest_marker(unsigned char *image,
-                                const hottest_point_t *hottest)
-{
-	char text[16];
-	int text_x;
-	int text_y;
-
-	/* 最高温度の位置が初期化されていない場合は何もしない */
-	if (!hottest->initialized) {
-		return;
-	}
-
-	/* 最高温度の位置に十字マークを描画 */
-	draw_cross(image, hottest->x, hottest->y);
-
-	/* 温度テキストの位置を決定（十字マークの右上に表示） */
-	text_x = hottest->x + 8;
-	text_y = hottest->y - 8;
-
-	/* 文字列が画像の右端や上端からはみ出さないように調整 */
-	if (text_x > DST_SIZE - 40) {
-		text_x = hottest->x - 40;
-	}
-
-	if (text_y < 8) {
-		text_y = hottest->y + 8;
-	}
-
-	/* 温度テキストを描画（例："36.5°C"） */
-	snprintf(text, sizeof(text), "%.1f~C", hottest->temp);
-	draw_text_with_shadow(image, text_x, text_y, text);
-}
-
-/******************************************************************************
- *
- * render_heatmap_body
- *  ヒートマップの本体部分を描画する。
- *  入力の8x8温度データをDST_SIZE x DST_SIZEに拡大し、カラーマップに変換して描画する。
- *  また、最高温度の位置を記録する。
- *
- * 引数：
- *  pixels   - AMG8833の温度データ
- *  image    - 出力画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
- *  min_temp - カラーマップ下限温度
- *  max_temp - カラーマップ上限温度
- *  hottest  - 最高温度の位置と温度を記録する構造体へのポインタ
- *
- * 戻り値：なし
- */
-static void render_heatmap_body(const amg8833_pixels_t *pixels,
-                                unsigned char *image,
-                                float min_temp,
-                                float max_temp,
-                                hottest_point_t *hottest)
-{
-	unsigned char r, g, b;
-	int x, y, idx;
-	float temp, norm;
-	float src_x, src_y;
-
-	for (y = 0; y < DST_SIZE; y++) {
-		for (x = 0; x < DST_SIZE; x++) {
-			
-			/* DST_SIZEの座標をSRC_SIZEの座標に変換（バイリニア補間用） */
-			src_x = (float)x * (float)(SRC_SIZE - 1) / (float)(DST_SIZE - 1);
-			src_y = (float)y * (float)(SRC_SIZE - 1) / (float)(DST_SIZE - 1);
-
-			/* バイリニア補間で温度値を取得 */
-			temp = bilinear_sample(pixels, src_x, src_y);
-
-			/* 最高温度の位置を更新 */
-			update_hottest_point(hottest, x, y, temp);
-
-			/* 温度値を0.0～1.0に正規化 */
-			norm = (temp - min_temp) / (max_temp - min_temp);
-
-			/* 正規化した温度値をRGB値に変換 */
-			temp_to_color(norm, &r, &g, &b);
-
-			/* 画像バッファにRGB値をセット */
-			idx = (y * DST_SIZE + x) * 3;
-			image[idx + 0] = r;
-			image[idx + 1] = g;
-			image[idx + 2] = b;
-		}
-	}
 }
 
 /******************************************************************************
@@ -719,4 +285,536 @@ int amg8833_save_heatmap_png(const amg8833_pixels_t *pixels,
 	free(image);
 	
 	return (result != 0) ? 0 : -1;
+}
+
+/*-----------------Internal functions----------------*/
+
+/* Heatmap rendering */
+
+/******************************************************************************
+ *
+ * render_heatmap_body
+ *  ヒートマップの本体部分を描画する。
+ *  入力の8x8温度データをDST_SIZE x DST_SIZEに拡大し、カラーマップに変換して描画する。
+ *  また、最高温度の位置を記録する。
+ *
+ * 引数：
+ *  pixels   - AMG8833の温度データ
+ *  image    - 出力画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *  min_temp - カラーマップ下限温度
+ *  max_temp - カラーマップ上限温度
+ *  hottest  - 最高温度の位置と温度を記録する構造体へのポインタ
+ *
+ * 戻り値：なし
+ */
+static void render_heatmap_body(const amg8833_pixels_t *pixels,
+                                unsigned char *image,
+                                float min_temp,
+                                float max_temp,
+                                hottest_point_t *hottest)
+{
+	unsigned char r, g, b;
+	int x, y, idx;
+	float temp, norm;
+	float src_x, src_y;
+
+	for (y = 0; y < DST_SIZE; y++) {
+		for (x = 0; x < DST_SIZE; x++) {
+			
+			/* DST_SIZEの座標をSRC_SIZEの座標に変換（バイリニア補間用） */
+			src_x = (float)x * (float)(SRC_SIZE - 1) / (float)(DST_SIZE - 1);
+			src_y = (float)y * (float)(SRC_SIZE - 1) / (float)(DST_SIZE - 1);
+
+			/* バイリニア補間で温度値を取得 */
+			temp = bilinear_sample(pixels, src_x, src_y);
+
+			/* 最高温度の位置を更新 */
+			update_hottest_point(hottest, x, y, temp);
+
+			/* 温度値を0.0～1.0に正規化 */
+			norm = (temp - min_temp) / (max_temp - min_temp);
+
+			/* 正規化した温度値をRGB値に変換 */
+			temp_to_color(norm, &r, &g, &b);
+
+			/* 画像バッファにRGB値をセット */
+			idx = (y * DST_SIZE + x) * 3;
+			image[idx + 0] = r;
+			image[idx + 1] = g;
+			image[idx + 2] = b;
+		}
+	}
+}
+
+/******************************************************************************
+ *
+ * update_hottest_point
+ *  現在の最高温度の位置と温度を更新する。
+ *  新しい温度が現在の最高温度より高い場合、またはまだ初期化されていない場合に更新する。
+ *
+ * 引数：
+ *  hottest - 最高温度の位置と温度を記録する構造体へのポインタ
+ *  x       - 新しい温度のX座標
+ *  y       - 新しい温度のY座標
+ *  temp    - 新しい温度値
+ *
+ * 戻り値：なし
+ */
+static void update_hottest_point(hottest_point_t *hottest,
+                                 int x,
+                                 int y,
+                                 float temp)
+{
+	/* まだ初期化されていない場合、または新しい温度が現在の最高温度より高い場合に更新する */
+	if (!hottest->initialized || temp > hottest->temp) {
+		hottest->x = x;
+		hottest->y = y;
+		hottest->temp = temp;
+		hottest->initialized = 1;
+	}
+}
+
+/******************************************************************************
+*
+* bilinear_sample
+*    8x8 の温度データから、指定座標の温度値をバイリニア補間で求める。
+*
+* 引数：
+*   pixels - AMG8833の温度データ
+*   src_x  - 元画像上のX座標
+*   src_y  - 元画像上のY座標
+*
+* 戻り値：
+*   補間後の温度値
+*/
+static float bilinear_sample(const amg8833_pixels_t *pixels, float src_x, float src_y)
+{
+	int x0, y0, x1, y1;
+	float dx, dy;
+	float v00, v01, v10, v11;
+	float v0, v1;
+	
+	/* 座標の範囲外アクセスを防ぐ */
+	if (src_x < 0.0f) src_x = 0.0f;
+	if (src_x > (float)(SRC_SIZE - 1)) src_x = (float)(SRC_SIZE - 1);
+	if (src_y < 0.0f) src_y = 0.0f;
+	if (src_y > (float)(SRC_SIZE - 1)) src_y = (float)(SRC_SIZE - 1);
+	
+	/* 周囲4点の座標を取得 */
+	x0 = (int)src_x;
+	y0 = (int)src_y;
+	x1 = (x0 < SRC_SIZE - 1) ? (x0 + 1) : x0;
+	y1 = (y0 < SRC_SIZE - 1) ? (y0 + 1) : y0;
+	
+	/* 距離を計算 */
+	dx = src_x - (float)x0;
+	dy = src_y - (float)y0;
+	
+	/* 4点の温度値を取得 */
+	v00 = pixels->data[y0 * SRC_SIZE + x0];
+	v01 = pixels->data[y0 * SRC_SIZE + x1];
+	v10 = pixels->data[y1 * SRC_SIZE + x0];
+	v11 = pixels->data[y1 * SRC_SIZE + x1];
+	
+	/* 重み付け */
+	v0 = v00 * (1.0f - dx) + v01 * dx;
+	v1 = v10 * (1.0f - dx) + v11 * dx;
+	
+	return v0 * (1.0f - dy) + v1 * dy;
+}
+
+/* Hottest point marker */
+
+/******************************************************************************
+ *
+ * draw_hottest_marker
+ *  最高温度の位置に十字マークと温度テキストを描画する。
+ *  十字マークは白色で、テキストは白色の文字に黒い影をつけて描画する。
+ *
+ * 引数：
+ *  image   - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *  hottest - 最高温度の位置と温度を記録する構造体へのポインタ
+ *
+ * 戻り値：なし
+ */
+static void draw_hottest_marker(unsigned char *image,
+                                const hottest_point_t *hottest)
+{
+	char text[16];
+	int text_x;
+	int text_y;
+
+	/* 最高温度の位置が初期化されていない場合は何もしない */
+	if (!hottest->initialized) {
+		return;
+	}
+
+	/* 最高温度の位置に十字マークを描画 */
+	draw_cross(image, hottest->x, hottest->y);
+
+	/* 温度テキストの位置を決定（十字マークの右上に表示） */
+	text_x = hottest->x + 8;
+	text_y = hottest->y - 8;
+
+	/* 文字列が画像の右端や上端からはみ出さないように調整 */
+	if (text_x > DST_SIZE - 40) {
+		text_x = hottest->x - 40;
+	}
+
+	if (text_y < 8) {
+		text_y = hottest->y + 8;
+	}
+
+	/* 温度テキストを描画（例："36.5°C"） */
+	snprintf(text, sizeof(text), "%.1f~C", hottest->temp);
+	draw_text_with_shadow(image, text_x, text_y, text);
+}
+
+/******************************************************************************
+ *
+ * draw_cross
+ *  画像バッファの指定座標に、中心が(cx, cy)の十字マークを描画する。
+ * 
+ * 引数：
+ *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *  cx    - 十字マークの中心X座標
+ *  cy    - 十字マークの中心Y座標
+ * 
+ * 戻り値：なし
+ */
+static void draw_cross(unsigned char *image, int cx, int cy)
+{
+	int i;
+
+	/* 十字マークは、中心から上下左右に4ピクセルずつ伸びる形にする */
+	for (i = -4; i <= 4; i++) {
+		set_pixel(image, cx + i, cy, 255, 255, 255);
+		set_pixel(image, cx, cy + i, 255, 255, 255);
+	}
+}
+
+/* Color bar */
+
+/******************************************************************************
+ *
+ * draw_colorbar
+ *  画像の右端に、温度のカラーバーを描画する。
+ *  カラーバーは、上が高温（赤）、下が低温（青）になるようにする。
+ * 
+ * 引数：
+ *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ * 
+ * 戻り値：なし
+ */
+static void draw_colorbar(unsigned char *image)
+{
+	int x, y, idx;
+	int bar_top;
+	int bar_bottom;
+	int bar_height;
+	int bar_left;
+	int bar_right;
+	unsigned char r, g, b;
+	float norm;
+
+	bar_top = COLORBAR_MARGIN;
+	bar_bottom = DST_SIZE - COLORBAR_MARGIN;
+	bar_height = bar_bottom - bar_top;
+
+	bar_right = DST_SIZE - COLORBAR_RIGHT_MARGIN;
+	bar_left = bar_right - COLORBAR_WIDTH;
+
+	for (y = bar_top; y < bar_bottom; y++) {
+		norm = 1.0f -
+		       (float)(y - bar_top) / (float)(bar_height - 1);
+
+		temp_to_color(norm, &r, &g, &b);
+
+		for (x = bar_left; x < bar_right; x++) {
+			idx = (y * DST_SIZE + x) * 3;
+			image[idx + 0] = r;
+			image[idx + 1] = g;
+			image[idx + 2] = b;
+		}
+	}
+
+	/* カラーバーの枠 */
+	for (x = bar_left - 1; x <= bar_right; x++) {
+		set_pixel(image, x, bar_top - 1, 0, 0, 0);
+		set_pixel(image, x, bar_bottom, 0, 0, 0);
+	}
+	for (y = bar_top - 1; y <= bar_bottom; y++) {
+		set_pixel(image, bar_left - 1, y, 0, 0, 0);
+		set_pixel(image, bar_right, y, 0, 0, 0);
+	}
+}
+
+/******************************************************************************
+ *
+ * draw_colorbar_temperature_text
+ *  カラーバー付近に最高温度と最低温度のテキストを描画する。
+ *
+ * 引数：
+ *  image    - 画像バッファ
+ *  min_temp - 最低温度
+ *  max_temp - 最高温度
+ *
+ * 戻り値：なし
+ */
+static void draw_colorbar_temperature_text(unsigned char *image,
+                                           float min_temp,
+                                           float max_temp)
+{
+	char max_text[16];
+	char min_text[16];
+	int max_text_x;
+	int min_text_x;
+
+	/* 温度を文字列に変換（例："36.5°C"） */
+	snprintf(max_text, sizeof(max_text), "%.1f~C", max_temp);
+	snprintf(min_text, sizeof(min_text), "%.1f~C", min_temp);
+
+	/* 文字列の幅から、右端基準でx座標を決める */
+	max_text_x = DST_SIZE - COLORBAR_RIGHT_MARGIN - calc_text_width(max_text);
+	min_text_x = DST_SIZE - COLORBAR_RIGHT_MARGIN - calc_text_width(min_text);
+
+	/* 最高温度と最低温度のテキストを描画（白文字に黒い影） */
+	draw_text_with_shadow(image,
+	                      max_text_x,
+	                      COLORBAR_MARGIN - 10,
+	                      max_text);
+
+	draw_text_with_shadow(image,
+	                      min_text_x,
+	                      DST_SIZE - COLORBAR_MARGIN + 3,
+	                      min_text);
+}
+
+/* Text rendering */
+
+/******************************************************************************
+ *
+ * draw_text_with_shadow
+ *  文字列を白色で描画し、その下に黒い影を描くことで、明るい背景でも文字が見やすくなるようにする。
+ * 
+ * 引数：
+ *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *  x     - 描画開始X座標
+ *  y     - 描画開始Y座標
+ *  text  - 描画する文字列（NULL終端）
+ * 
+ * 戻り値：なし
+ */
+static void draw_text_with_shadow(unsigned char *image,
+                                  int x,
+                                  int y,
+                                  const char *text)
+{
+	/* 黒の影を先に描く */
+	draw_text(image, x + 1, y + 1, text, 0, 0, 0);
+
+	/* 白文字を上から描く */
+	draw_text(image, x, y, text, 255, 255, 255);
+}
+
+/******************************************************************************
+ *
+ * draw_text
+ *  画像バッファの指定座標に、指定した文字列を描画する。
+ *  フォントは5x7ドットで、必要に応じて拡大して描画する。
+ * 
+ * 引数：
+ *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *  x     - 描画開始X座標
+ *  y     - 描画開始Y座標
+ *  text  - 描画する文字列（NULL終端）
+ *  r     - 赤成分
+ *  g     - 緑成分
+ *  b     - 青成分
+ * 
+ * 戻り値：なし
+ */
+static void draw_text(unsigned char *image,
+                      int x,
+                      int y,
+                      const char *text,
+                      unsigned char r,
+                      unsigned char g,
+                      unsigned char b)
+{
+	int i;
+	int cx;
+
+	cx = x;
+
+	for (i = 0; text[i] != '\0'; i++) {
+		draw_char(image, cx, y, text[i], r, g, b);
+		cx += 6 * FONT_SCALE;
+	}
+}
+
+/******************************************************************************
+ *
+ * draw_char
+ *  画像バッファの指定座標に、指定した文字を描画する。
+ *  フォントは5x7ドットで、必要に応じて拡大して描画する。
+ * 
+ * 引数：
+ *  image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *  x     - 描画開始X座標
+ *  y     - 描画開始Y座標
+ *  c     - 描画する文字
+ *  r     - 赤成分
+ *  g     - 緑成分
+ *  b     - 青成分
+ * 
+ * 戻り値：なし
+ */
+static void draw_char(unsigned char *image,
+                      int x,
+                      int y,
+                      char c,
+                      unsigned char r,
+                      unsigned char g,
+                      unsigned char b)
+{
+	const unsigned char *font;
+	int row, col;
+	int sx, sy;
+
+	font = get_font5x7(c);
+
+	for (row = 0; row < 7; row++) {
+		for (col = 0; col < 5; col++) {
+			if (font[row] & (1 << (4 - col))) {
+				for (sy = 0; sy < FONT_SCALE; sy++) {
+					for (sx = 0; sx < FONT_SCALE; sx++) {
+						set_pixel(image,
+						          x + col * FONT_SCALE + sx,
+						          y + row * FONT_SCALE + sy,
+						          r, g, b);
+					}
+				}
+			}
+		}
+	}
+}
+
+/******************************************************************************
+ *
+ * get_font5x7
+ *  5x7ドットのビットマップフォントデータを取得する。
+ * 
+ * 引数：
+ *  c - 文字（'0'～'9', '.', '-', 'C', ' '）
+ * 
+ * 戻り値：
+ *  文字に対応する7バイトのビットマップデータへのポインタ。
+ *  対応する文字がない場合はスペースのビットマップを返す。
+ */
+static const unsigned char *get_font5x7(char c)
+{
+	if (c >= '0' && c <= '9') {
+		return font5x7_digits[c - '0'];
+	}
+
+	switch (c) {
+	case '.':
+		return font5x7_dot;
+	case '-':
+		return font5x7_minus;
+	case 'C':
+	case 'c':
+		return font5x7_c;
+	case '~':   /* ° */
+		return font5x7_degree;
+	case ' ':
+	default:
+		return font5x7_space;
+	}
+}
+
+/******************************************************************************
+ *
+ * calc_text_width
+ *  文字列の描画幅を計算する。
+ *
+ * 引数：
+ *  text - 幅を計算する文字列
+ *
+ * 戻り値：
+ *  文字列の描画幅
+ */
+static int calc_text_width(const char *text)
+{
+	return (int)strlen(text) * FONT_WIDTH * FONT_SCALE;
+}
+
+/* Common low-level functions */
+
+/******************************************************************************
+ * 
+ * set_pixel
+ *   画像バッファの指定座標にRGB値をセットする。
+ *  座標が画像範囲外の場合は何もしない。
+ * 
+ * 引数：
+ *   image - 画像バッファ（幅×高さ×3のサイズでRGB値が格納されている）
+ *   x     - X座標
+ *   y     - Y座標
+ *   r     - 赤成分
+ *   g     - 緑成分
+ * 	 b     - 青成分
+ * 
+ * 戻り値：なし
+ */
+static void set_pixel(unsigned char *image,
+                      int x,
+                      int y,
+                      unsigned char r,
+                      unsigned char g,
+                      unsigned char b)
+{
+	int idx;
+
+	if (x < 0 || x >= DST_SIZE) return;
+	if (y < 0 || y >= DST_SIZE) return;
+
+	idx = (y * DST_SIZE + x) * 3;
+	image[idx + 0] = r;
+	image[idx + 1] = g;
+	image[idx + 2] = b;
+}
+
+/******************************************************************************
+*
+* temp_to_color
+*    正規化した温度値をRGB値へ変換する。
+*
+* 引数：
+*   norm - 0.0～1.0 に正規化した温度値
+*   r    - 赤成分の出力先
+*   g    - 緑成分の出力先
+*   b    - 青成分の出力先
+*
+* 戻り値：なし
+*/
+static void temp_to_color(float norm,
+                          unsigned char *r,
+                          unsigned char *g,
+                          unsigned char *b)
+{
+	int idx;
+	
+	/* 範囲外のアクセスを防ぐ */
+	if (norm < 0) norm = 0.0f;
+	if (norm > 1) norm = 1.0f;
+	
+	/* 0～255の整数に変換 */
+	idx = (int)(norm * 255.0f + 0.5f);
+	
+	/* Turboカラーマッピング */
+	*r = turbo_colormap[idx][0];
+	*g = turbo_colormap[idx][1];
+	*b = turbo_colormap[idx][2];
 }
